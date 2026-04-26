@@ -132,7 +132,6 @@ const healthText = document.getElementById('healthText');
 const scoreText = document.getElementById('scoreText');
 const enemiesText = document.getElementById('enemiesText');
 const statusText = document.getElementById('statusText');
-const achievementsList = document.getElementById('achievementsList');
 const universeContainer = document.getElementById('universe');
 
 // Simple achievements using localStorage
@@ -148,9 +147,7 @@ function addAchievement(label) {
   if (!list.includes(label)) { list.push(label); writeAchievements(list); renderAchievements(); }
 }
 function renderAchievements() {
-  if (!achievementsList) return;
-  const items = readAchievements();
-  achievementsList.innerHTML = items.length ? items.map(t => `<li>${t}</li>`).join('') : '<li>No achievements yet — start a run!</li>';
+  // achievementsList element not present in this build — no-op
 }
 renderAchievements();
 
@@ -192,12 +189,17 @@ function initUniverse() {
 }
 initUniverse();
 
-// Simple WebAudio sounds
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// AudioContext created lazily on first user gesture to satisfy browser autoplay policy
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
 function playTone(freq, duration, type = 'sine', volume = 0.2) {
-  const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
-  o.type = type; o.frequency.value = freq; o.connect(g); g.connect(audioCtx.destination);
-  g.gain.value = volume; o.start(); g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration); o.stop(audioCtx.currentTime + duration);
+  const ctx = getAudioCtx();
+  const o = ctx.createOscillator(); const g = ctx.createGain();
+  o.type = type; o.frequency.value = freq; o.connect(g); g.connect(ctx.destination);
+  g.gain.value = volume; o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration); o.stop(ctx.currentTime + duration);
 }
 function playSound(name) {
   if (name === 'jump') playTone(500, 0.08, 'square', 0.15);
@@ -209,15 +211,19 @@ function playSound(name) {
 }
 
 function requestPointerLock() {
+  // Resume audio context if suspended (required by some browsers after lazy init)
+  getAudioCtx();
   try {
-    renderer.domElement.focus({ preventScroll: true });
     controls.lock();
   } catch (err) {
     overlayMessage.textContent = 'Pointer lock blocked. Click the canvas or press Play again.';
   }
 }
 
-startBtn.addEventListener('click', requestPointerLock);
+startBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  requestPointerLock();
+});
 renderer.domElement.addEventListener('click', () => { if (!controls.isLocked) requestPointerLock(); });
 controls.addEventListener('lock', () => { overlay.style.display = 'none'; overlayMessage.textContent = ''; });
 controls.addEventListener('unlock', () => { overlay.style.display = ''; overlayMessage.textContent = 'Paused — click Play to resume'; });
